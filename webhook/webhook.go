@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gophish/gophish/dialer"
 	log "github.com/gophish/gophish/logger"
 )
 
@@ -53,6 +54,14 @@ var senderInstance = &defaultSender{
 
 // SetTransport sets the underlying transport for the default webhook client.
 func SetTransport(tr *http.Transport) {
+	senderInstance.client.Transport = tr
+}
+
+// SetTransportFromDialer configures the webhook client to use the transport
+// from the dialer package, which includes proxy support.
+func SetTransportFromDialer() {
+	// Import the dialer package to get the configured transport
+	tr := dialer.GetHTTPTransport()
 	senderInstance.client.Transport = tr
 }
 

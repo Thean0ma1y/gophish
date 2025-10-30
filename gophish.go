@@ -85,20 +85,27 @@ func main() {
 	// Configure our various upstream clients to make sure that we restrict
 	// outbound connections as needed.
 	dialer.SetAllowedHosts(conf.AdminConf.AllowedInternalHosts)
-	webhook.SetTransport(&http.Transport{
-		DialContext: dialer.Dialer().DialContext,
-	})
+	
+	// Configure proxy if enabled
+	if conf.Proxy.Enabled {
+		dialer.SetProxyConfig(&conf.Proxy)
+		// Use the proxy-enabled transport from dialer
+		webhook.SetTransportFromDialer()
+	} else {
+		// Use standard transport without proxy
+		webhook.SetTransport(&http.Transport{
+			DialContext: dialer.Dialer().DialContext,
+		})
+	}
 
 	err = log.Setup(conf.Logging)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// Provide the option to disable the built-in mailer
-	// Setup the global variables and settings
-	err = models.Setup(conf)
-	if err != nil {
-		log.Fatal(err)
+	
+	// Log proxy status after logger is initialized
+	if conf.Proxy.Enabled {
+		log.Infof("Phantom Proxy enabled: %s (%s)", conf.Proxy.URL, conf.Proxy.Type)
 	}
 
 	// Unlock any maillogs that may have been locked for processing

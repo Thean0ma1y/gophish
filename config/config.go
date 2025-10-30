@@ -26,6 +26,15 @@ type PhishServer struct {
 	KeyPath   string `json:"key_path"`
 }
 
+// ProxyConfig represents proxy configuration for Phantom Proxy integration
+type ProxyConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Type     string `json:"type"`     // http, https, socks5
+	URL      string `json:"url"`      // Proxy URL (e.g., http://proxy.example.com:8080)
+	Username string `json:"username"` // Optional proxy authentication
+	Password string `json:"password"` // Optional proxy authentication
+}
+
 // Config represents the configuration information.
 type Config struct {
 	AdminConf      AdminServer `json:"admin_server"`
@@ -37,6 +46,7 @@ type Config struct {
 	TestFlag       bool        `json:"test_flag"`
 	ContactAddress string      `json:"contact_address"`
 	Logging        *log.Config `json:"logging"`
+	Proxy          ProxyConfig `json:"proxy"`
 }
 
 // Version contains the current gophish version

@@ -19,5 +19,12 @@
 	"logging": {
 		"filename": "",
 		"level": ""
+	},
+	"proxy": {
+		"enabled": false,
+		"type": "http",
+		"url": "",
+		"username": "",
+		"password": ""
 	}
 }

@@ -114,12 +114,10 @@ func (as *Server) ImportSite(w http.ResponseWriter, r *http.Request) {
 		JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusBadRequest)
 		return
 	}
-	restrictedDialer := dialer.Dialer()
-	tr := &http.Transport{
-		DialContext: restrictedDialer.DialContext,
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
+	tr := dialer.GetHTTPTransport()
+	// Override TLS config for insecure connections
+	tr.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true,
 	}
 	client := &http.Client{Transport: tr}
 	resp, err := client.Get(cr.URL)

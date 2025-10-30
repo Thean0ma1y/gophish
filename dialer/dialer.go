@@ -1,20 +1,32 @@
 package dialer
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/proxy"
+	"github.com/gophish/gophish/config"
 )
 
 // RestrictedDialer is used to create a net.Dialer which restricts outbound
 // connections to only allowlisted IP ranges.
 type RestrictedDialer struct {
 	allowedHosts []*net.IPNet
+	proxyURL     *url.URL
+	proxyAuth    *proxy.Auth
+	proxyType    string
 }
 
 // DefaultDialer is a global instance of a RestrictedDialer
 var DefaultDialer = &RestrictedDialer{}
+
+// proxyConfig holds the global proxy configuration
+var proxyConfig *config.ProxyConfig
 
 // SetAllowedHosts sets the list of allowed hosts or IP ranges for the default
 // dialer.
@@ -115,6 +127,87 @@ type dialControl = func(network, address string, c syscall.RawConn) error
 type restrictedDialer struct {
 	*net.Dialer
 	allowed []string
+}
+
+// SetProxyConfig sets the proxy configuration for the dialer
+func SetProxyConfig(proxyCfg *config.ProxyConfig) {
+	proxyConfig = proxyCfg
+	if proxyCfg != nil && proxyCfg.Enabled && proxyCfg.URL != "" {
+		DefaultDialer.SetProxy(proxyCfg.Type, proxyCfg.URL, proxyCfg.Username, proxyCfg.Password)
+	}
+}
+
+// SetProxy sets the proxy configuration for a RestrictedDialer
+func (d *RestrictedDialer) SetProxy(proxyType, proxyURL, username, password string) error {
+	if proxyURL == "" {
+		d.proxyURL = nil
+		d.proxyAuth = nil
+		d.proxyType = ""
+		return nil
+	}
+
+	parsedURL, err := url.Parse(proxyURL)
+	if err != nil {
+		return fmt.Errorf("invalid proxy URL: %v", err)
+	}
+
+	d.proxyURL = parsedURL
+	d.proxyType = proxyType
+
+	if username != "" || password != "" {
+		d.proxyAuth = &proxy.Auth{
+			User:     username,
+			Password: password,
+		}
+	}
+
+	return nil
+}
+
+// GetHTTPTransport returns an HTTP transport configured with proxy and restrictions
+func GetHTTPTransport() *http.Transport {
+	baseDialer := DefaultDialer.Dialer()
+	
+	transport := &http.Transport{
+		DialContext: baseDialer.DialContext,
+		Proxy:       nil,
+	}
+
+	// Configure proxy if enabled
+	if proxyConfig != nil && proxyConfig.Enabled && proxyConfig.URL != "" {
+		proxyURL, err := url.Parse(proxyConfig.URL)
+		if err == nil {
+			// Handle SOCKS5 proxy
+			if proxyConfig.Type == "socks5" {
+				var auth *proxy.Auth
+				if proxyConfig.Username != "" || proxyConfig.Password != "" {
+					auth = &proxy.Auth{
+						User:     proxyConfig.Username,
+						Password: proxyConfig.Password,
+					}
+				}
+				
+				// Create SOCKS5 dialer
+				socksDialer, err := proxy.SOCKS5("tcp", proxyURL.Host, auth, baseDialer)
+				if err == nil {
+					// Wrap SOCKS5 dialer to provide DialContext
+					transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+						// SOCKS5 dialer doesn't support context, so we use Dial directly
+						// Context cancellation would need to be handled separately if needed
+						return socksDialer.Dial(network, addr)
+					}
+				}
+			} else {
+				// Handle HTTP/HTTPS proxy
+				if proxyConfig.Username != "" || proxyConfig.Password != "" {
+					proxyURL.User = url.UserPassword(proxyConfig.Username, proxyConfig.Password)
+				}
+				transport.Proxy = http.ProxyURL(proxyURL)
+			}
+		}
+	}
+
+	return transport
 }
 
 func restrictedControl(allowed []*net.IPNet) dialControl {
